@@ -1,27 +1,28 @@
-from aiogram import Router, types, F
-
-from db import set_language, get_language
-from keyboards.inline import language_keyboard, main_menu_keyboard
+from aiogram import Router, F
+from aiogram.types import Message, CallbackQuery
+from db import get_language, set_language
 from config import LANGUAGES
+from keyboards.inline import language_keyboard
+from keyboards.reply import main_menu_keyboard
 
 router = Router()
 
 
-@router.callback_query(F.data == "my_lang")
-async def cb_my_lang(callback: types.CallbackQuery) -> None:
-    current = await get_language(callback.from_user.id)
+# 👇 Ловим текст кнопки "🌐 Мой язык"
+@router.message(F.text == "🌐 Мой язык")
+async def handle_my_lang(message: Message):
+    current = await get_language(message.from_user.id)
     lang_name = LANGUAGES.get(current, current)
 
-    await callback.message.edit_text(
-        f"🌐 Ваш текущий язык: <b>{lang_name}</b>\n\n"
-        "Выберите новый язык:",
-        reply_markup=language_keyboard(),
+    # Отправляем инлайн-кнопки (флаги), так как их много и они не влезут в нижнее меню
+    await message.answer(
+        f"🌐 Ваш текущий язык: <b>{lang_name}</b>\n\nВыберите новый язык из списка:",
+        reply_markup=language_keyboard()
     )
-    await callback.answer()
 
 
 @router.callback_query(F.data.startswith("set_lang:"))
-async def cb_set_lang(callback: types.CallbackQuery) -> None:
+async def cb_set_lang(callback: CallbackQuery):
     lang_code = callback.data.split(":")[1]
     if lang_code not in LANGUAGES:
         await callback.answer("❌ Неизвестный язык", show_alert=True)
@@ -30,9 +31,11 @@ async def cb_set_lang(callback: types.CallbackQuery) -> None:
     await set_language(callback.from_user.id, lang_code)
     lang_name = LANGUAGES[lang_code]
 
-    await callback.message.edit_text(
-        f"✅ Язык установлен: <b>{lang_name}</b>\n\n"
-        "Все входящие сообщения будут переводиться на этот язык.",
-        reply_markup=main_menu_keyboard(callback.from_user.id),
+    # Удаляем сообщение с флагами, чтобы не засорять чат
+    await callback.message.delete()
+
+    await callback.message.answer(
+        f"✅ Язык установлен: <b>{lang_name}</b>",
+        reply_markup=main_menu_keyboard(callback.from_user.id)
     )
-    await callback.answer(f"Язык: {lang_name}")
+    await callback.answer()
